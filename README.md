@@ -37,13 +37,13 @@ Propensity scores were estimated using logistic regression based on pre-treatmen
 Before matching, the overlap assumption was evaluated by comparing the propensity score distributions of the treatment and control groups.
 
 <p align="center">
-  <img src="figures/overlap.png" width="350">
+  <img src="figures/overlap.png" width="400">
 </p>
 
 Covariate balance was evaluated before and after matching using standardized mean differences.
 
 <p align="center">
-  <img src="figures/loveplot.png" width="350">
+  <img src="figures/loveplot.png" width="400">
 </p>
 
 ### 2. Outcome Regression
