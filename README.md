@@ -13,7 +13,7 @@ The treatment was defined as completing at least a college-level education by 19
 Potential confounders included age, sex, race, income, alcohol consumption frequency, and use of nerves medication.
 
 <p align="center">
-  <img src="figures/causal_plot.png" width="350">
+  <img src="figures/causal_plot.jpg" width="350">
 </p>
 
 ## Data
