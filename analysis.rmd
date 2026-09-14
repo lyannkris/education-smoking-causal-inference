@@ -1,0 +1,266 @@
+---
+title: "Analysis"
+output:
+  pdf_document: default
+  html_document: default
+
+---
+
+# 1 Data Preprocess
+
+```{r}
+library(causaldata)
+head(nhefs_complete)
+```
+
+```{r}
+# define treatment variable
+nhefs_complete$high_edu <- as.numeric(nhefs_complete$education) >= 4
+nhefs_complete$nerves <- as.factor(nhefs_complete$nerves)
+
+# select variables
+column_selected <- c("high_edu", "smkintensity82_71", "age", "sex", 
+                     "race", "income", "alcoholfreq", "nerves")
+
+nhefs_cleaned <- nhefs_complete[, column_selected]
+nhefs_cleaned <- nhefs_cleaned[nhefs_cleaned$alcoholfreq !=5, ]
+nhefs_cleaned <- na.omit(nhefs_cleaned)
+head(nhefs_cleaned)
+```
+
+```{r}
+# dimension
+dim(nhefs_cleaned)
+```
+
+# 2 Assumption Examination
+
+```{r}
+# overlap
+treated <- nhefs_cleaned$high_edu
+lprob = glm(high_edu ~ age + sex + race + income + alcoholfreq + nerves,
+               family = "binomial", x = TRUE, y = TRUE, data = nhefs_cleaned)
+phat = predict(lprob, type = "r", xlab = "Propensity Scores")
+
+par(pty = "s")
+plot(density(phat[treated]), col = "red", xlim = c(-0.1, 0.8), ylim = c(0, 4),
+     main = "Density Estimations of Propensity Scores", xlab = "")
+lines(density(phat[!treated]))
+legend("topright", c("treated", "control"), col = c("red", "black"), lty = c(1, 1))
+
+```
+
+# 3 Matching
+
+```{r}
+# pair match
+data = nhefs_cleaned
+Z = lprob$y
+logitps = predict(lprob)
+
+# Create distance matrix between control and treated units using logit distance
+distmat.logitps = outer(logitps[Z == 1],logitps[Z==0],"-")
+distmat.logitps = abs(distmat.logitps)
+# Label the rows and columns of the distance matrix by the subject id numbers in the data; you can set it something else as well.
+rownames(distmat.logitps)= rownames(data)[Z == 1]
+colnames(distmat.logitps)= rownames(data)[Z == 0]
+
+```
+
+```{r}
+library(optmatch)
+noControls = 1# Pair match 1 control to each treated
+matchvec=pairmatch(distmat.logitps,
+                   controls=noControls,
+                   data=data) #The last argument is used to re-order the output; it doesn't actually use the data itself.
+summary(matchvec)
+```
+
+```{r}
+matchvec.num = as.numeric(substr(matchvec,start=3,stop=10))
+matchvec.num.notNA = matchvec.num[!is.na(matchvec.num)] #To remove individuals who didn't get matched.
+matchID = unique(matchvec.num.notNA)
+I = length(matchID)
+matchedPairMat = matrix(0,I,4)
+
+colnames(matchedPairMat) = c("SubjectID (Treated)","SubjectID (Control)","PS (Treated)","PS (Control)")
+treatedSubjID = rownames(data)[Z==1]
+controlSubjID = rownames(data)[Z==0]
+for(i in 1:I) {
+subjectIDs = which(matchvec.num == matchID[i])
+matchedPairMat[i,"SubjectID (Treated)"] = subjectIDs[subjectIDs %in% treatedSubjID]
+matchedPairMat[i,"SubjectID (Control)"] = subjectIDs[subjectIDs %in% controlSubjID]
+matchedPairMat[i,"PS (Treated)"] = round(logitps[matchedPairMat[i,"SubjectID (Treated)"]],3)
+matchedPairMat[i,"PS (Control)"] = round(logitps[matchedPairMat[i,"SubjectID (Control)"]],3)
+}
+
+knitr::kable(head(matchedPairMat), caption = '289 Matched Pairs')
+```
+
+```{r}
+head(nhefs_cleaned)
+```
+
+```{r}
+Xmat = model.matrix(~. -1, data = nhefs_cleaned[, c(3:8)])
+treated = nhefs_cleaned$high_edu
+
+controlmat.before=Xmat[treated==0,];
+
+treatedmat = Xmat[treated==1,]
+controlmean.before=apply(controlmat.before,2,mean,na.rm=TRUE);
+treatmean=apply(treatedmat,2,mean,na.rm=TRUE);
+treatvar=apply(treatedmat,2,var,na.rm=TRUE);
+controlvar=apply(controlmat.before,2,var,na.rm=TRUE);
+stand.diff.before=(treatmean-controlmean.before)/sqrt((treatvar+controlvar)/2)
+
+
+# Standardized differences after matching
+controlmat.after=Xmat[matchedPairMat[,2],];
+controlmean.after=apply(controlmat.after,2,mean);
+# Standardized differences after matching
+stand.diff.after=(treatmean-controlmean.after)/sqrt((treatvar+controlvar)/2);
+standBeforeAfter = cbind(stand.diff.before[-1],stand.diff.after[-1])
+```
+
+```{r}
+library(ggplot2)
+abs.stand.diff.before=abs(stand.diff.before[-1])
+abs.stand.diff.after=abs(stand.diff.after[-1])
+covariates=names(stand.diff.before[-1])
+plot.dataframe=data.frame(abs.stand.diff=c(abs.stand.diff.before,abs.stand.diff.after),covariates=rep(covariates,2),type=c(rep("Before",length(covariates)),rep("After",length(covariates))))
+ggplot(plot.dataframe,aes(x=abs.stand.diff,y=covariates))+geom_point(size=5,aes(shape=factor(type)))+scale_shape_manual(values=c(4,1))+geom_vline(xintercept=c(.1,.2),lty=2)
+```
+
+```{r}
+ggplot(plot.dataframe,
+       aes(x = abs.stand.diff,
+           y = reorder(covariates, abs.stand.diff),
+           shape = type)) +
+
+  geom_point(size = 3, color = "black") +
+
+  scale_shape_manual(values = c(4, 1)) +
+
+  geom_vline(xintercept = c(0.1, 0.2),
+             linetype = "dashed",
+             color = "red") +
+
+  labs(
+    x = "Absolute Standardized Mean Difference",
+    y = "Variables",
+    shape = NULL,
+    title = "Covariate Balance Before and After Matching"
+  ) +
+
+  theme_bw(base_size = 14) +   
+
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+
+    plot.margin = margin(10, 10, 10, 10),
+
+    # ===== legend =====
+    legend.position = "top",
+    legend.direction = "horizontal",
+    legend.justification = "center",
+    legend.box = "horizontal",
+    legend.title = element_blank(),
+
+    legend.text = element_text(size = 14),
+
+    # ===== axis =====
+    axis.title.x = element_text(size = 16, face = "bold"),
+    axis.title.y = element_text(size = 16, face = "bold"),
+
+    axis.text.x = element_text(size = 13),
+    axis.text.y = element_text(size = 13),
+
+    # ===== title =====
+    plot.title = element_text(
+      hjust = 0.5,
+      size = 18,
+      face = "bold"
+    )
+  )
+```
+
+```{r}
+# estimation
+y1 <- data$smkintensity82_71[matchedPairMat[,1]]
+y0 <- data$smkintensity82_71[matchedPairMat[,2]]
+
+mean(y1 - y0)
+
+library(exactRankTests)
+wilcox.test(y1, y0, paired = TRUE, conf.int = TRUE)
+```
+
+# 4 Outcome regression
+
+```{r}
+reg1 = lm(smkintensity82_71 ~ age + sex + race + income + alcoholfreq + nerves, 
+          subset = high_edu, data = nhefs_cleaned)
+reg0 = lm(smkintensity82_71 ~ age + sex + race + income + alcoholfreq + nerves, 
+          subset = !high_edu, data = nhefs_cleaned)
+
+muhat1 = predict(reg1, newdata = nhefs_cleaned)
+muhat0 = predict(reg0, newdata = nhefs_cleaned)
+
+tauhatreg = muhat1 - muhat0
+
+mean(tauhatreg)
+```
+
+```{r}
+# uncertainty
+n1 = sum(nhefs_cleaned$high_edu)
+n0 = sum(1 - nhefs_cleaned$high_edu)
+n = nrow(nhefs_cleaned)
+
+varout = 1/n1*var(nhefs_cleaned$smkintensity82_71[nhefs_cleaned$high_edu] -
+  muhat1[nhefs_cleaned$high_edu]) +
+  1/n0*var(nhefs_cleaned$smkintensity82_71[!nhefs_cleaned$high_edu] -
+  muhat0[!nhefs_cleaned$high_edu]) +
+  1/n*var(muhat1 - muhat0)
+
+varout
+```
+
+```{r}
+#ci
+mean(tauhatreg) - qnorm(0.975)*sqrt(varout)
+
+mean(tauhatreg) + qnorm(0.975)*sqrt(varout)
+```
+
+# 5 Sensitivity Analysis
+
+```{r}
+sens.analysis.signedrank=function(diff,Gamma){
+  rk=rank(abs(diff))
+  s1=1*(diff>0)
+  s2=1*(diff<0)
+  W=sum(s1*rk)
+  Eplus=sum((s1+s2)*rk*Gamma)/(1+Gamma)
+  Eminus=sum((s1+s2)*rk)/(1+Gamma)
+  V=sum((s1+s2)*rk*rk*Gamma)/((1+Gamma)^2)
+  Dplus=(W-Eplus)/sqrt(V)
+  Dminus=(W-Eminus)/sqrt(V)
+  list(lowerbound=1-pnorm(Dminus),upperbound=1-pnorm(Dplus))
+}
+
+diff=y1-y0
+Gamvec = c(1,2,3,4,4.25, 5)
+tt = matrix(0, length(Gamvec), 3)
+tt[,1] = Gamvec
+
+for(i in 1:length(Gamvec)) {
+  a = sens.analysis.signedrank(diff, Gamvec[i])
+  tt[i,-1] = c(a$lowerbound, a$upperbound)
+}
+
+colnames(tt) = c("Gamma", "Lower Bound", "Upper Bound")
+knitr::kable(round(tt,3), caption = "Gamma and Bounds on P-Value")
+```
