@@ -13,7 +13,8 @@ The treatment was defined as completing at least a college-level education by 19
 Potential confounders included age, sex, race, income, alcohol consumption frequency, and use of nerves medication.
 
 <p align="center">
-  <img src="figures/causal_plot.png" width="300">
+  <img src="figures/causal_plot.png" width="350"
+    style="background-color: white; padding: 10px;">
 </p>
 
 ## Data
@@ -37,13 +38,13 @@ Propensity scores were estimated using logistic regression based on pre-treatmen
 Before matching, the overlap assumption was evaluated by comparing the propensity score distributions of the treatment and control groups.
 
 <p align="center">
-  <img src="figures/overlap.png" width="300">
+  <img src="figures/overlap.png" width="350">
 </p>
 
 Covariate balance was evaluated before and after matching using standardized mean differences.
 
 <p align="center">
-  <img src="figures/loveplot.png" width="300">
+  <img src="figures/loveplot.png" width="350">
 </p>
 
 ### 2. Outcome Regression
